@@ -1,0 +1,63 @@
+{
+  "name": "instagram_data_export",
+  "version": "0.2-from-live-inspection",
+  "browser": { "type": "chrome", "headless": false, "persistent": true },
+  "target": { "url": "https://www.instagram.com/" },
+  "steps": [
+    { "id": "open_instagram", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "navigate", "url": "https://www.instagram.com/" },
+    { "id": "login_if_needed", "action": "ensure_login", "save_as": "login_result", "description": "Logs in only if a login page appears; the OTP is typed in the terminal. Stores 'logged_in' or 'already_authenticated' in login_result so the post-login popup steps below only run after a real login." },
+
+    { "id": "save_login_info", "action": "click_if_visible", "when": { "variable": "login_result", "equals": "logged_in" }, "selector": { "type": "role", "role": "button", "name": "Save", "exact": true, "within_text": "Save your login info to Instagram?" }, "timeout": 8000, "description": "After the OTP Instagram shows 'Save your login info to Instagram?' (buttons: Save / Not now). within_text limits the click to that popup, so it can never hit a post's Save button on the feed behind it. Skipped if the popup does not appear." },
+    { "id": "login_popup_closed", "action": "wait", "when": { "variable": "login_result", "equals": "logged_in" }, "selector": { "type": "text", "value": "Save your login info to Instagram?" }, "state": "hidden", "description": "Passes immediately if the popup never appeared." },
+    { "id": "dismiss_notifications_popup", "action": "click_if_visible", "when": { "variable": "login_result", "equals": "logged_in" }, "selector": { "type": "role", "role": "button", "name": "Not Now", "exact": true, "within_text": "Turn on notifications" }, "timeout": 8000, "description": "Instagram may show 'Turn on notifications' (Turn On / Not Now) over the home page. Clicks Not Now inside that popup only; skipped if it does not appear." },
+    { "id": "notifications_popup_closed", "action": "wait", "when": { "variable": "login_result", "equals": "logged_in" }, "selector": { "type": "text", "value": "Turn on notifications" }, "state": "hidden", "description": "Passes immediately if the popup never appeared." },
+    { "id": "home_loaded", "action": "wait", "selector": { "type": "role", "role": "link", "name": "Home", "exact": true }, "description": "The logged-in sidebar is showing." },
+
+    { "id": "open_more", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "link", "name": "Settings" }, "description": "The sidebar 'More' button (its icon is labelled 'Settings')." },
+    { "id": "open_settings", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "link", "name": "Settings Settings", "exact": true }, "description": "'Settings' entry in the More menu." },
+
+    { "id": "open_accounts_center", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "link", "name": "Meta Account" }, "description": "Instagram calls Accounts Center 'Meta Account'." },
+    { "id": "open_info_permissions", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "link", "name": "Your information and permissions" } },
+    { "id": "open_export", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Export your information" } },
+
+    { "id": "export_dialog_ready", "action": "wait", "selector": { "type": "role", "role": "button", "name": "Create export", "exact": true }, "description": "The Current/Past activity tabs only exist when earlier exports are listed, so wait for the always-present button." },
+    { "id": "no_pending_request", "action": "abort_if_visible", "selector": { "type": "role", "role": "heading", "name": "Requested", "exact": true }, "timeout": 6000, "message": "An export request is already pending (shown under 'Requested'). Nothing was submitted. Wait for it to finish, or cancel it on Instagram, then run again.", "description": "Duplicate guard. The earlier-exports list loads after the dialog opens, so this waits up to 6s for the 'Requested' heading; if it appears the run stops cleanly before creating anything." },
+    { "id": "create_export", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Create export" } },
+
+    { "id": "choose_instagram_profile", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Instagram" }, "description": "Matches the profile button ending in 'Instagram'; fails safely if you have several Instagram accounts." },
+    { "id": "export_to_device", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Export to device", "exact": true } },
+    { "id": "review_screen_ready", "action": "wait", "selector": { "type": "role", "role": "button", "name": "Start export", "exact": true } },
+
+    { "id": "open_customise", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Customise information", "starts_with": true }, "description": "Row on the review screen; its text also shows the current selection ('All available information')." },
+    { "id": "customise_ready", "action": "wait", "selector": { "type": "role", "role": "heading", "name": "Choose specific info to export" } },
+    { "id": "pick_fields", "action": "set_checkboxes", "selector": { "type": "role", "role": "dialog", "name": "Export your information" }, "checked": ["Contacts", "Followers and following"], "only": true, "description": "Ends with exactly these boxes ticked and every other one cleared. Edit the list to change what is exported." },
+    { "id": "save_customise", "action": "click", "selector": { "type": "role", "role": "button", "name": "Save", "exact": true } },
+    { "id": "customise_closed", "action": "wait", "selector": { "type": "role", "role": "heading", "name": "Choose specific info to export" }, "state": "hidden" },
+
+    { "id": "open_date_range", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Date range" } },
+    { "id": "choose_all_time", "action": "click", "selector": { "type": "role", "role": "radio", "name": "All time" } },
+    { "id": "save_date_range", "action": "click", "selector": { "type": "role", "role": "button", "name": "Save", "exact": true } },
+
+    { "id": "date_range_closed", "action": "wait", "selector": { "type": "role", "role": "heading", "name": "Date range", "exact": true }, "state": "hidden", "description": "Let the date-range panel finish closing before moving on." },
+
+    { "id": "open_format", "retry": { "max_attempts": 3, "delay_ms": 1500 }, "action": "click", "selector": { "type": "role", "role": "button", "name": "Format", "starts_with": true }, "description": "starts_with avoids also matching 'Customise information' (contains 'format')." },
+    { "id": "choose_json", "action": "click", "selector": { "type": "role", "role": "radio", "name": "JSON" } },
+    { "id": "save_format", "action": "click", "selector": { "type": "role", "role": "button", "name": "Save", "exact": true } },
+
+    { "id": "format_closed", "action": "wait", "selector": { "type": "role", "role": "heading", "name": "Format", "exact": true }, "state": "hidden", "description": "Let the format panel finish closing; the checks below read the review screen behind it." },
+
+    { "id": "verify_account", "action": "verify", "selector": { "type": "role", "role": "dialog", "name": "Export your information" }, "contains_env": "WA_EXPECTED_ACCOUNT", "description": "The review screen names the selected profile; it must contain WA_EXPECTED_ACCOUNT." },
+    { "id": "verify_all_time", "action": "verify", "selector": { "type": "role", "role": "button", "name": "Date range" }, "contains": "All time" },
+    { "id": "verify_json", "action": "verify", "selector": { "type": "role", "role": "button", "name": "Format", "starts_with": true }, "contains": "JSON" },
+
+    { "id": "start_export", "action": "click", "selector": { "type": "role", "role": "button", "name": "Start export", "exact": true } },
+
+    { "id": "enter_password", "action": "enter_password", "value_env": "WA_IG_PASSWORD", "timeout": 10000, "description": "Handles 'For your security, please re-enter your password': types WA_IG_PASSWORD from .env and clicks Continue. Skipped if no prompt appears." },
+
+    { "id": "request_acknowledged", "action": "wait", "selector": { "type": "role", "role": "heading", "name": "Requested", "exact": true }, "timeout": 120000, "description": "Instagram lists the new export under 'Requested' once it accepts the request. The long wait leaves time to finish any extra verification by hand in Chrome." },
+
+    { "id": "download_latest_export", "action": "download_latest_export", "selector": { "type": "role", "role": "dialog", "name": "Export your information" }, "row_contains": ["Followers and following", "JSON"], "save_dir": "downloads", "save_as": "export_zip", "password_env": "WA_IG_PASSWORD", "popup_title": "Download your files", "delete_old": true, "timeout": 15000, "download_timeout": 600000, "description": "Downloads the newest finished export (latest 'Expires on') whose row mentions Followers and following + JSON into exports/downloads/. Sequence on Instagram: row Download -> 'Download your files' popup (click its Download) -> 're-enter your password' (typed from WA_IG_PASSWORD, Continue) -> zip downloads. A request just raised is still 'Requested', so this normally picks up an earlier finished export; if none is ready the run stops cleanly." },
+    { "id": "sync_followers", "action": "sync_followers", "source": "export_zip", "member": "connections/followers_and_following/followers_1.json", "account_env": "WA_EXPECTED_ACCOUNT", "description": "Reads followers_1.json straight from the zip (nothing is written to disk) and updates the wa_followers table: new followers are added with the current date/time, followers no longer in the list (unfollowed) are removed." }
+  ],
+  "execution": { "timeout": 30000, "on_failure": "stop" }
+}

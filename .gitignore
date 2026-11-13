@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Sensitive / generated runtime data (browser profiles hold cookies and sessions)
+browser_data/
+logs/
+exports/
+.env
+.pytest_cache/

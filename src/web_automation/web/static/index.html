@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Web Automation Engine</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Indeterminate progress bar: visible while the person is waiting for data. -->
+  <div id="loadbar" class="loadbar" role="progressbar" aria-label="Loading" hidden></div>
+
+  <header>
+    <h1>Web Automation Engine</h1>
+    <span id="account"></span>
+    <button id="logout" type="button" hidden>Sign out</button>
+  </header>
+
+  <!-- Shown instead of the app when the UI needs a user name and password. -->
+  <section id="login" class="login" hidden>
+    <h2>Sign in</h2>
+    <form id="login-form">
+      <p><label>User name<br><input id="login-user" type="text" autocomplete="username" maxlength="100" required></label></p>
+      <p><label>Password<br><input id="login-password" type="password" autocomplete="current-password" maxlength="200" required></label></p>
+      <p><button type="submit" id="login-submit">Sign in</button></p>
+      <p id="login-error" class="bad" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <div id="app">
+
+  <p id="banner" hidden></p>
+
+  <!-- Shown only while a run is waiting for the OTP code (or another answer). -->
+  <section id="question" class="attention" hidden>
+    <h2 id="question-title">Action needed</h2>
+    <p id="question-prompt"></p>
+    <form id="question-form" autocomplete="off">
+      <input id="question-input" type="password" inputmode="numeric" maxlength="32"
+             autocomplete="one-time-code" placeholder="Verification code" aria-label="Verification code">
+      <button type="submit" id="question-submit">Submit</button>
+      <button type="button" id="question-no" hidden>No</button>
+    </form>
+  </section>
+
+  <nav>
+    <button data-tab="dashboard" class="active">Dashboard</button>
+    <button data-tab="followers">Followers</button>
+    <button data-tab="recent">Recent followers</button>
+    <button data-tab="unfollowed">Unfollowed</button>
+    <button data-tab="runs">Runs</button>
+    <button data-tab="logs">Logs</button>
+  </nav>
+
+  <main aria-busy="false">
+    <section id="tab-dashboard">
+      <h2>Run the export</h2>
+      <p>
+        <select id="config" aria-label="Workflow"></select>
+        <button id="run-start">Run now</button>
+        <button id="run-cancel" hidden>Cancel</button>
+      </p>
+      <p>Status: <strong id="run-status">idle</strong> <span id="run-trigger" class="muted"></span>
+        <span id="run-message"></span></p>
+      <p id="schedule-line" class="muted" hidden></p>
+      <h3>Progress</h3>
+      <ul id="run-events" class="plain"></ul>
+
+      <h2>Followers</h2>
+      <table class="summary">
+        <tr><th>Followers now</th><td id="s-followers">–</td></tr>
+        <tr><th>New in the last 7 days</th><td id="s-added">–</td></tr>
+        <tr><th>Unfollowed in the last 7 days</th><td id="s-removed">–</td></tr>
+        <tr><th>Unfollowed in total</th><td id="s-removed-all">–</td></tr>
+        <tr><th>Last run</th><td id="s-last">–</td></tr>
+      </table>
+    </section>
+
+    <section id="tab-followers" hidden>
+      <h2>Current followers</h2>
+      <p><input id="followers-search" type="search" placeholder="Search username" aria-label="Search username"></p>
+      <table><thead><tr><th>Username</th><th>First seen</th><th>Followed (per Instagram)</th></tr></thead>
+        <tbody id="followers-body"></tbody></table>
+      <p class="pager"><button data-pager="followers" data-dir="-1">Previous</button>
+        <span id="followers-page"></span><button data-pager="followers" data-dir="1">Next</button></p>
+    </section>
+
+    <section id="tab-recent" hidden>
+      <h2>Recent followers</h2>
+      <p><label>Show the last <select id="recent-days">
+        <option value="1">1 day</option><option value="7" selected>7 days</option>
+        <option value="30">30 days</option><option value="0">all time</option></select></label></p>
+      <table><thead><tr><th>Username</th><th>Seen on</th><th>Run</th></tr></thead>
+        <tbody id="recent-body"></tbody></table>
+      <p class="pager"><button data-pager="recent" data-dir="-1">Previous</button>
+        <span id="recent-page"></span><button data-pager="recent" data-dir="1">Next</button></p>
+    </section>
+
+    <section id="tab-unfollowed" hidden>
+      <h2>Unfollowed</h2>
+      <p><label>Show the last <select id="unfollowed-days">
+        <option value="1">1 day</option><option value="7" selected>7 days</option>
+        <option value="30">30 days</option><option value="0">all time</option></select></label></p>
+      <table><thead><tr><th>Username</th><th>Noticed on</th><th>Run</th></tr></thead>
+        <tbody id="unfollowed-body"></tbody></table>
+      <p class="pager"><button data-pager="unfollowed" data-dir="-1">Previous</button>
+        <span id="unfollowed-page"></span><button data-pager="unfollowed" data-dir="1">Next</button></p>
+    </section>
+
+    <section id="tab-runs" hidden>
+      <h2>Runs</h2>
+      <table><thead><tr><th>#</th><th>Started</th><th>Started by</th><th>Status</th><th>Submitted</th><th>Accepted</th>
+        <th>Downloaded</th><th>Message</th><th></th></tr></thead>
+        <tbody id="runs-body"></tbody></table>
+      <p class="pager"><button data-pager="runs" data-dir="-1">Previous</button>
+        <span id="runs-page"></span><button data-pager="runs" data-dir="1">Next</button></p>
+      <div id="run-detail" hidden>
+        <h3 id="run-detail-title"></h3>
+        <table><thead><tr><th>#</th><th>Step</th><th>Action</th><th>Status</th><th>ms</th><th>Tries</th><th>Message</th></tr></thead>
+          <tbody id="steps-body"></tbody></table>
+        <p><button id="run-detail-logs">Show the logs of this run</button></p>
+      </div>
+    </section>
+
+    <section id="tab-logs" hidden>
+      <h2>Logs</h2>
+      <p>
+        <input id="logs-run" type="number" min="1" placeholder="Run #" aria-label="Run number">
+        <select id="logs-level" aria-label="Level">
+          <option value="">All levels</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
+        </select>
+        <input id="logs-search" type="search" placeholder="Search text" aria-label="Search text">
+        <button id="logs-apply">Apply</button>
+      </p>
+      <table><thead><tr><th>Time</th><th>Run</th><th>Level</th><th>Message</th></tr></thead>
+        <tbody id="logs-body"></tbody></table>
+      <p class="pager"><button data-pager="logs" data-dir="-1">Previous</button>
+        <span id="logs-page"></span><button data-pager="logs" data-dir="1">Next</button></p>
+    </section>
+  </main>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
