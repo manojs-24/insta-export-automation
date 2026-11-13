@@ -30,7 +30,8 @@ already finished, so a request you just made is normally picked up by a later ru
 
 ## Requirements
 
-- Windows (the project was built and tested on Windows 11), with **Google Chrome** installed.
+- Windows (the project was built and tested on Windows 11), with **Google Chrome** installed. Or Docker on
+  a 64-bit Intel/AMD machine, which brings its own Chrome: see [Running with Docker](#running-with-docker).
 - [uv](https://docs.astral.sh/uv/), which also installs the right Python (3.14) for the project.
 - A **PostgreSQL** database you can reach (a hosted one is fine) and its connection URL.
 - An Instagram account you own.
@@ -121,6 +122,8 @@ command-line flag (`--url`, `--profile`, `--headless`) overrides both for one ru
 | `WA_SCHEDULE_CONFIG` | `instagram_export.json` | Which file in `configs/` the schedule runs |
 | `WA_ANSWER_WAIT_MINUTES` | `10` | How long a run waits for you to type the verification code before giving up (1 to 240) |
 | `WA_UI_USERNAME`, `WA_UI_PASSWORD` | empty | Sign-in for the web page. Set both (password at least 8 characters). Empty means the one-time link is used |
+| `WA_UI_HOST` | `127.0.0.1` | Where the web page listens. Anything other than this computer (the Docker image sets `0.0.0.0`) is refused unless the sign-in above is set |
+| `WA_UI_ALLOWED_HOSTS` | empty | Extra host names the page may be opened as, comma separated (for example your domain behind an HTTPS proxy). `localhost` and `127.0.0.1` always work; any other name is refused |
 
 An invalid value stops the program with a clear message instead of being ignored.
 
@@ -257,6 +260,55 @@ successful export.
 - `.env`, `browser_data/` and `exports/` are in `.gitignore`. Treat your followers list and the exported
   data as sensitive.
 
+## Running with Docker
+
+The image contains the program, Google Chrome and a virtual screen, so it runs the same workflow on a
+server without a desktop. It is **Linux/amd64 only**, because Google Chrome for Linux is.
+
+1. Copy `.env.example` to `.env` and fill it in. **`WA_UI_USERNAME` and `WA_UI_PASSWORD` are required**:
+   the container listens on all of its addresses, and the program refuses to do that without a sign-in.
+   Also set `WA_DATABASE_URL`, `WA_EXPECTED_ACCOUNT`, and `WA_IG_USERNAME` / `WA_IG_PASSWORD`.
+2. Build and start it:
+   ```
+   docker compose up -d --build
+   ```
+3. Open `http://127.0.0.1:8000/` on that machine and sign in. When a run needs a verification code, the
+   box appears on the page as usual.
+
+| Task | Command |
+|---|---|
+| Watch the output | `docker compose logs -f` |
+| Stop it (your data is kept) | `docker compose down` |
+| Update after pulling new code | `docker compose up -d --build` |
+| Check the database | `docker compose run --rm web-automation web-automation --db-check` |
+| Check the workflow file | `docker compose run --rm web-automation web-automation --config configs/instagram_export.json --validate-only` |
+
+**Data.** Two named volumes hold everything that must survive a rebuild: `browser_data` (the saved
+Instagram login, so keep it private) and `exports` (the downloaded zip). Followers, runs and logs are in your
+database, not in the container. `docker compose down -v` deletes the volumes, and with them your login.
+
+**Reaching it from another machine.** The port is published on the server's own loopback
+(`127.0.0.1:8000`) on purpose, because the page speaks plain HTTP. Two safe ways in:
+- an SSH tunnel: `ssh -L 8000:127.0.0.1:8000 you@your-server`, then open `http://127.0.0.1:8000/`;
+- an HTTPS reverse proxy in front of it. Set `WA_UI_ALLOWED_HOSTS=your.domain`, pass the `Host` header
+  through, and send `X-Forwarded-Proto: https` so the sign-in cookie is marked Secure.
+
+Do not change the `ports:` line to publish port 8000 on every interface.
+
+**Things that behave differently in a container**
+- **You cannot see the Chrome window.** It draws on a virtual screen. The normal login (password from
+  `.env`, then the code typed in the web page) works without looking at it, but a challenge that needs
+  clicking on the screen, such as a CAPTCHA or "was this you?", cannot be completed. Instagram may also
+  challenge a login from a data-centre address more often than one from your home. Do the first login
+  with that in mind.
+- **A saved login from your Windows computer will most likely not work in the container.** Chrome encrypts
+  its cookies with a key that belongs to the operating system, so log in inside the container instead.
+- **Automatic runs** keep going while the container runs (`restart: unless-stopped`). Check
+  `docker compose logs` if they seem to stop.
+- **The workflow file is built into the image.** After editing `configs/instagram_export.json`, rebuild.
+- **Chrome is whatever version Google ships on the day you build**, so an image rebuilt later may behave
+  slightly differently from an older one.
+
 ## Updating selectors when Instagram changes
 
 Instagram changes its pages from time to time. If a step starts failing with "element not visible":
@@ -317,3 +369,4 @@ real database or credentials. A few database tests are skipped unless you set `W
 - Automatic runs need the web page's program to stay open, and the computer awake.
 - Built and tested on Windows. Other systems are untested.
 - Each run that finds no pending request creates a real export request.
+- The Docker image is Linux/amd64 only, and you cannot see or click in Chrome inside it.

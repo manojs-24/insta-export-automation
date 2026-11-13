@@ -1,0 +1,24 @@
+# Secrets and personal data: never sent to the build, so they can never end up in an image.
+.env
+.env.*
+browser_data/
+exports/
+logs/
+
+# Not needed inside the image.
+.git/
+.gitignore
+.gitattributes
+.venv/
+.vscode/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+tests/
+*.md
+requirements.txt
+start.bat
+start_ui.bat
+Dockerfile
+docker-compose.yml
+.dockerignore

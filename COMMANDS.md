@@ -44,6 +44,18 @@ the UI window stays open; the first is one full interval after start-up. `WA_ANS
 sets how long a run waits for you to type the OTP code. The Runs tab has a **Started by** column
 (Manual / Automatic).
 
+## 1c. Docker (host it on a server)
+
+```
+docker compose up -d --build        # build and start (needs WA_UI_USERNAME and WA_UI_PASSWORD in .env)
+docker compose logs -f              # watch it
+docker compose down                 # stop (volumes, and so your login, are kept)
+docker compose run --rm web-automation web-automation --db-check
+```
+
+Open `http://127.0.0.1:8000/` on that machine (or tunnel to it with `ssh -L 8000:127.0.0.1:8000 you@server`).
+Linux/amd64 only. See "Running with Docker" in the README for the volumes and the limits.
+
 ## 2. Check things without running the workflow
 
 ```

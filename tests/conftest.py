@@ -211,5 +211,8 @@ def isolate_from_real_env(monkeypatch: pytest.MonkeyPatch) -> None:
     Setting these to an empty string (present, so dotenv will not override them) keeps tests
     away from the real hosted database and the real Instagram credentials.
     """
-    for name in ("WA_DATABASE_URL", "WA_IG_USERNAME", "WA_IG_PASSWORD", "WA_EXPECTED_ACCOUNT"):
+    for name in (
+        "WA_DATABASE_URL", "WA_IG_USERNAME", "WA_IG_PASSWORD", "WA_EXPECTED_ACCOUNT",
+        "WA_UI_USERNAME", "WA_UI_PASSWORD", "WA_UI_HOST", "WA_UI_ALLOWED_HOSTS",
+    ):
         monkeypatch.setenv(name, "")

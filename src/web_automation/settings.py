@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,28 @@ def _clean_config_name(value: str) -> str:
     return name
 
 
+_HOST_NAME = re.compile(r"^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$")
+
+
+def _clean_hosts(value: str) -> tuple[str, ...]:
+    """Comma-separated bare host names the web page may be reached as (no scheme, port or path)."""
+    hosts: list[str] = []
+    for part in value.split(","):
+        host = part.strip().lower()
+        if not host:
+            continue
+        if not _HOST_NAME.fullmatch(host):
+            raise SettingsError(
+                "WA_UI_ALLOWED_HOSTS must be a comma-separated list of plain host names such as "
+                "'automation.example.com' (no http://, no port, no path, no wildcard)"
+            )
+        if host not in hosts:
+            hosts.append(host)
+    if len(hosts) > 20:
+        raise SettingsError("WA_UI_ALLOWED_HOSTS may list at most 20 host names")
+    return tuple(hosts)
+
+
 def _get_minutes(name: str, default: int, low: int, high: int, allow_zero: bool = False) -> int:
     value = _get_int(name, default)
     if allow_zero and value == 0:
@@ -83,6 +106,12 @@ class Settings:
     # Optional login for the web UI. Both empty = the UI uses the one-time token link instead.
     ui_username: str = field(default="", repr=False)
     ui_password: str = field(default="", repr=False)  # never printed or logged
+    # Where the web page listens. Anything but this computer (for example 0.0.0.0 inside a
+    # container) is only accepted together with a sign-in; see web/app.py:serve.
+    ui_host: str = "127.0.0.1"
+    # Extra host names the page may be reached as (for example your domain behind a proxy).
+    # localhost always works; every other name is refused, which stops DNS rebinding.
+    ui_allowed_hosts: tuple[str, ...] = ()
 
     @classmethod
     def load(cls, env_file: Path | None = None) -> "Settings":
@@ -112,6 +141,8 @@ class Settings:
             schedule_config=_clean_config_name(os.environ.get("WA_SCHEDULE_CONFIG", "instagram_export.json")),
             ui_username=os.environ.get("WA_UI_USERNAME", "").strip(),
             ui_password=os.environ.get("WA_UI_PASSWORD", ""),
+            ui_host=os.environ.get("WA_UI_HOST", "").strip() or "127.0.0.1",
+            ui_allowed_hosts=_clean_hosts(os.environ.get("WA_UI_ALLOWED_HOSTS", "")),
         )
 
     def browser_config(self) -> BrowserConfig:

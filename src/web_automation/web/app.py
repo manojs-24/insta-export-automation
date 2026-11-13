@@ -1,7 +1,8 @@
 """Local web UI: a FastAPI app that serves one static page plus a small JSON API.
 
 Security model (the page shows your followers and can start a run that uses your password):
-  * the server is meant to listen on 127.0.0.1 only (see `serve`);
+  * the server listens on 127.0.0.1 only, unless WA_UI_HOST is set (a container needs
+    0.0.0.0), and then ONLY when a sign-in is configured (see `serve`);
   * every /api request must be authorised, in one of two modes:
       - login mode (WA_UI_USERNAME + WA_UI_PASSWORD set): the page shows a sign-in form; a
         correct login sets a random HttpOnly session cookie that expires after 12 hours, and
@@ -38,7 +39,18 @@ from web_automation.web.runner import WebRunner
 from web_automation.web.scheduler import RunScheduler
 
 STATIC = Path(__file__).parent / "static"
-LOOPBACK = {"127.0.0.1", "localhost", "[::1]", "::1"}
+LOCAL_BIND_HOSTS = ("127.0.0.1", "localhost", "::1")
+WILDCARD_BIND_HOSTS = ("0.0.0.0", "::")
+
+
+def host_name(header: str | None) -> str | None:
+    """The bare, lower-case host name in a Host header or an Origin URL ('[::1]:8000' -> '::1')."""
+    if not header:
+        return None
+    try:
+        return urlsplit(header if "//" in header else "//" + header).hostname
+    except ValueError:
+        return None
 
 
 class AnswerBody(BaseModel):
@@ -70,6 +82,9 @@ def create_app(
     throttle = throttle or LoginThrottle()
     token = token or secrets.token_urlsafe(24)
     runner = runner or WebRunner()
+    # The page answers only to these host names. A hostile site that points its own name at
+    # 127.0.0.1 (DNS rebinding) sends a Host header that is not in this list, and is refused.
+    allowed_hosts = {"127.0.0.1", "localhost", "::1", *settings.ui_allowed_hosts}
     app = FastAPI(title="Web Automation Engine", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.token = token
     app.state.runner = runner
@@ -78,12 +93,13 @@ def create_app(
 
     @app.middleware("http")
     async def protect(request: Request, call_next):
-        # Refuse requests from other websites (cross-site) and from non-local Host names
-        # (DNS rebinding). Direct local use sends no Origin header and is allowed.
-        host = (request.headers.get("host") or "").rsplit(":", 1)[0] if not (request.headers.get("host") or "").startswith("[") else "[::1]"
+        # Refuse requests from other websites (cross-site) and from host names that are not
+        # listed (DNS rebinding). A request without an Origin header (a typed address, curl,
+        # the health check) is judged by its Host header alone.
         origin = request.headers.get("origin")
-        origin_host = urlsplit(origin).hostname if origin else None
-        if host not in LOOPBACK or (origin and origin_host not in LOOPBACK):
+        if host_name(request.headers.get("host")) not in allowed_hosts or (
+            origin and host_name(origin) not in allowed_hosts
+        ):
             return JSONResponse({"detail": "Forbidden"}, status_code=403)
         response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
@@ -146,7 +162,7 @@ def create_app(
         }
 
     @app.post("/auth/login", include_in_schema=False)
-    def login(body: LoginBody, response: Response) -> dict[str, str]:
+    def login(body: LoginBody, request: Request, response: Response) -> dict[str, str]:
         if not login_enabled:
             raise HTTPException(status_code=404)
         wait = throttle.retry_after()
@@ -163,6 +179,7 @@ def create_app(
         response.set_cookie(
             COOKIE_NAME, sessions.create(), max_age=int(sessions.lifetime_s),
             httponly=True, samesite="strict", path="/",
+            secure=request.headers.get("x-forwarded-proto", "").lower() == "https",
         )
         return {"status": "signed in"}
 
@@ -269,18 +286,26 @@ def create_app(
     return app
 
 
-def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Start the UI. Refuses any host that is not this machine."""
+def serve(host: str | None = None, port: int = 8000) -> None:
+    """Start the UI.
+
+    It listens on this computer only (127.0.0.1) unless WA_UI_HOST says otherwise. Any other
+    address (0.0.0.0 inside a container, a LAN address) is accepted ONLY when a sign-in is
+    configured: the one-time link is not strong enough protection beyond this computer.
+    """
     import uvicorn
 
-    if host not in ("127.0.0.1", "localhost", "::1"):
+    settings = Settings.load()
+    host = host or settings.ui_host
+    login_enabled = validate_login_settings(settings.ui_username, settings.ui_password)
+    if host not in LOCAL_BIND_HOSTS and not login_enabled:
         raise WebAutomationError(
             "The UI shows your followers and can start runs; it only listens on this computer "
-            "(127.0.0.1)."
+            "(127.0.0.1) unless a sign-in is set. Set WA_UI_USERNAME and WA_UI_PASSWORD to "
+            f"listen on {host}."
         )
+    shown_host = "127.0.0.1" if host in WILDCARD_BIND_HOSTS else host
     token = secrets.token_urlsafe(24)
-    settings = Settings.load()
-    login_enabled = validate_login_settings(settings.ui_username, settings.ui_password)
     runner = WebRunner()
     scheduler = RunScheduler(
         runner, Path("configs"), settings.schedule_config, settings.schedule_minutes
@@ -294,15 +319,17 @@ def serve(host: str = "127.0.0.1", port: int = 8000) -> None:
             print(f"Warning: could not update the database tables: {exc}\n")
     scheduler.start()
     if login_enabled:
-        print(f"\nWeb UI:  http://{host}:{port}/\n"
+        print(f"\nWeb UI:  http://{shown_host}:{port}/\n"
               "Sign in with WA_UI_USERNAME and WA_UI_PASSWORD from your .env file.")
+        if host not in LOCAL_BIND_HOSTS:
+            print(f"Listening on {host}:{port}. Reach it only through HTTPS or an SSH tunnel.")
     else:
-        print(f"\nWeb UI:  http://{host}:{port}/#token={token}\n"
+        print(f"\nWeb UI:  http://{shown_host}:{port}/#token={token}\n"
               "Open exactly this link (the token after # is your access key; keep it private).\n"
               "Tip: set WA_UI_USERNAME and WA_UI_PASSWORD in .env to sign in with a password instead.")
     if scheduler.enabled:
         print(f"Automatic runs: every {scheduler.minutes} minute(s); the first at "
-              f"{scheduler.next_run_time().strftime('%H:%M')} (only while this window stays open).\n")
+              f"{scheduler.next_run_time().strftime('%H:%M')} (only while this program stays open).\n")
     else:
         print("Automatic runs: off (set WA_SCHEDULE_MINUTES in .env to turn them on).\n")
     try:

@@ -1,0 +1,44 @@
+# Run the web page, the schedule and the automation in one container:
+#
+#   1. copy .env.example to .env and fill it in (set WA_UI_USERNAME and WA_UI_PASSWORD)
+#   2. docker compose up -d --build
+#   3. open http://127.0.0.1:8000/ and sign in
+#
+# The page is published on this computer's loopback only. To reach it from elsewhere, use an
+# SSH tunnel (ssh -L 8000:127.0.0.1:8000 your-server) or an HTTPS reverse proxy; see the README.
+# Passwords that contain a "$" must be wrapped in single quotes in .env (compose reads that file).
+
+name: web-automation
+
+services:
+  web-automation:
+    build:
+      context: .
+    image: web-automation-engine:local
+    platform: linux/amd64        # Google Chrome for Linux exists for amd64 only
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # These win over anything in .env, so the data always lands in the volumes below.
+      WA_PROFILE_ROOT: /data/browser_data
+      WA_EXPORT_DIR: /data/exports
+      WA_UI_HOST: 0.0.0.0        # listen inside the container; the port mapping below limits who can reach it
+      # TZ: Europe/London        # optional: time zone for the schedule's log lines
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - browser_data:/data/browser_data   # the saved Instagram login: keep it (and keep it private)
+      - exports:/data/exports             # the downloaded export zip
+    shm_size: "1gb"              # Chrome crashes on heavy pages with Docker's default 64 MB
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  browser_data:
+  exports:
